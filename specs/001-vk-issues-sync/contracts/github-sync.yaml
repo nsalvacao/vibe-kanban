@@ -1,0 +1,666 @@
+openapi: 3.1.0
+info:
+  title: GitHub Issues Sync API
+  version: 1.0.0
+  description: |
+    API endpoints for managing GitHub Issues synchronization with Vibe Kanban Tasks.
+    
+    **Base Path**: `/api/github-sync`
+    
+    **Authentication**: All endpoints require valid Vibe Kanban session (same as existing API).
+
+servers:
+  - url: http://localhost:{port}/api/github-sync
+    description: Local development
+    variables:
+      port:
+        default: '3000'
+        description: Auto-assigned port (see BACKEND_PORT env var)
+
+paths:
+  /config/{projectId}:
+    get:
+      summary: Get GitHub sync configuration for a project
+      operationId: getConfig
+      tags:
+        - Configuration
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Configuration found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubSyncConfig'
+        '404':
+          description: No configuration found for this project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      summary: Create GitHub sync configuration
+      operationId: createConfig
+      tags:
+        - Configuration
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGitHubSyncConfig'
+      responses:
+        '201':
+          description: Configuration created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubSyncConfig'
+        '400':
+          description: Invalid input (e.g., invalid PAT, repo not found)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Configuration already exists for this project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    patch:
+      summary: Update GitHub sync configuration
+      operationId: updateConfig
+      tags:
+        - Configuration
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGitHubSyncConfig'
+      responses:
+        '200':
+          description: Configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitHubSyncConfig'
+        '404':
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    delete:
+      summary: Delete GitHub sync configuration
+      operationId: deleteConfig
+      tags:
+        - Configuration
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Configuration deleted
+        '404':
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sync/{projectId}/trigger:
+    post:
+      summary: Trigger manual sync
+      operationId: triggerSync
+      tags:
+        - Sync Operations
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '202':
+          description: Sync triggered (running asynchronously)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sync_id:
+                    type: string
+                    format: uuid
+                  message:
+                    type: string
+                    example: "Sync started"
+        '409':
+          description: Sync already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Configuration not found or disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sync/{projectId}/status:
+    get:
+      summary: Get current sync status
+      operationId: getSyncStatus
+      tags:
+        - Sync Operations
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sync status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatus'
+        '404':
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sync/{projectId}/history:
+    get:
+      summary: Get sync history (last 100 syncs)
+      operationId: getSyncHistory
+      tags:
+        - Sync Operations
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Number of history entries to return
+      responses:
+        '200':
+          description: Sync history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SyncHistory'
+                  summary:
+                    $ref: '#/components/schemas/SyncHistorySummary'
+        '404':
+          description: Configuration not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /conflicts/{projectId}:
+    get:
+      summary: Get pending conflicts for a project
+      operationId: getPendingConflicts
+      tags:
+        - Conflict Resolution
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of pending conflicts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conflicts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConflictDetail'
+                  total_pending:
+                    type: integer
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /conflicts/{conflictId}/resolve:
+    post:
+      summary: Resolve a conflict
+      operationId: resolveConflict
+      tags:
+        - Conflict Resolution
+      parameters:
+        - name: conflictId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveConflict'
+      responses:
+        '200':
+          description: Conflict resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Conflict resolved successfully"
+                  updated_task:
+                    $ref: '#/components/schemas/Task'
+        '400':
+          description: Invalid resolution action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Conflict not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /validate-repo:
+    post:
+      summary: Validate GitHub repository access
+      operationId: validateRepo
+      tags:
+        - Configuration
+      description: |
+        Test if provided PAT has access to specified repository.
+        Used during initial setup to validate credentials before saving.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - repo_owner
+                - repo_name
+                - pat
+              properties:
+                repo_owner:
+                  type: string
+                  example: "octocat"
+                repo_name:
+                  type: string
+                  example: "hello-world"
+                pat:
+                  type: string
+                  example: "ghp_xxxxxxxxxxxxxxxxxxxx"
+      responses:
+        '200':
+          description: Repository accessible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid: true
+                  repo_url:
+                    type: string
+                    example: "https://github.com/octocat/hello-world"
+                  open_issues_count:
+                    type: integer
+                    example: 42
+        '401':
+          description: Invalid PAT or insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Repository not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    GitHubSyncConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        repo_owner:
+          type: string
+          example: "octocat"
+        repo_name:
+          type: string
+          example: "hello-world"
+        last_sync_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_sync_at:
+          type: string
+          format: date-time
+          nullable: true
+        sync_enabled:
+          type: boolean
+        sync_interval_seconds:
+          type: integer
+          example: 300
+          description: "300 = 5 minutes idle, 30 = active polling"
+        sync_error:
+          type: string
+          nullable: true
+          example: "GitHub API rate limit exceeded"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateGitHubSyncConfig:
+      type: object
+      required:
+        - repo_owner
+        - repo_name
+        - pat
+      properties:
+        repo_owner:
+          type: string
+          example: "octocat"
+        repo_name:
+          type: string
+          example: "hello-world"
+        pat:
+          type: string
+          example: "ghp_xxxxxxxxxxxxxxxxxxxx"
+          description: "GitHub Personal Access Token (will be encrypted)"
+
+    UpdateGitHubSyncConfig:
+      type: object
+      properties:
+        repo_owner:
+          type: string
+        repo_name:
+          type: string
+        pat:
+          type: string
+          description: "If provided, will re-encrypt and update"
+        sync_enabled:
+          type: boolean
+        sync_interval_seconds:
+          type: integer
+          minimum: 30
+          maximum: 3600
+
+    SyncStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [idle, syncing, error, not_configured]
+        last_sync_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_sync_at:
+          type: string
+          format: date-time
+          nullable: true
+        current_sync:
+          type: object
+          nullable: true
+          properties:
+            sync_id:
+              type: string
+              format: uuid
+            started_at:
+              type: string
+              format: date-time
+            progress:
+              type: object
+              properties:
+                issues_processed:
+                  type: integer
+                total_issues:
+                  type: integer
+                  nullable: true
+                  description: "NULL if total unknown (still paginating)"
+        last_error:
+          type: string
+          nullable: true
+
+    SyncHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        sync_config_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        duration_ms:
+          type: integer
+          nullable: true
+        issues_fetched:
+          type: integer
+        tasks_created:
+          type: integer
+        tasks_updated:
+          type: integer
+        conflicts_detected:
+          type: integer
+        status:
+          type: string
+          enum: [success, failure, in_progress]
+        error_message:
+          type: string
+          nullable: true
+
+    SyncHistorySummary:
+      type: object
+      properties:
+        total_issues_imported:
+          type: integer
+        total_conflicts:
+          type: integer
+        avg_duration_ms:
+          type: number
+          format: float
+        success_rate:
+          type: number
+          format: float
+          description: "Percentage (0-100)"
+
+    ConflictDetail:
+      type: object
+      properties:
+        conflict_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+          format: uuid
+        task:
+          $ref: '#/components/schemas/Task'
+        detected_at:
+          type: string
+          format: date-time
+        local_content:
+          type: object
+          properties:
+            title:
+              type: string
+            description:
+              type: string
+        remote_content:
+          type: object
+          properties:
+            title:
+              type: string
+            description:
+              type: string
+        base_content:
+          type: object
+          properties:
+            title:
+              type: string
+            description:
+              type: string
+        diff:
+          type: object
+          description: "Three-way diff visualization (generated server-side)"
+          properties:
+            local_vs_base:
+              type: string
+              description: "Unified diff format"
+            remote_vs_base:
+              type: string
+            local_vs_remote:
+              type: string
+
+    ResolveConflict:
+      type: object
+      required:
+        - resolution_action
+      properties:
+        resolution_action:
+          type: string
+          enum: [keep_local, accept_github, merge]
+        merged_content:
+          type: object
+          description: "Required if resolution_action = 'merge'"
+          properties:
+            title:
+              type: string
+            description:
+              type: string
+
+    Task:
+      type: object
+      description: "Existing Vibe Kanban Task model (simplified)"
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [todo, in_progress, in_review, done, cancelled]
+        github_issue_url:
+          type: string
+          nullable: true
+          example: "https://github.com/octocat/hello-world/issues/42"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: "Invalid GitHub PAT"
+        details:
+          type: string
+          nullable: true
+          example: "PAT requires 'repo' scope"
+        code:
+          type: string
+          example: "INVALID_PAT"
+
+tags:
+  - name: Configuration
+    description: Manage GitHub sync configuration
+  - name: Sync Operations
+    description: Trigger and monitor sync operations
+  - name: Conflict Resolution
+    description: Handle sync conflicts
