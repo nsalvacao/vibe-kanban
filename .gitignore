@@ -85,3 +85,8 @@ dev_assets
 vibe-kanban-cloud/
 
 .jj
+
+# Spec-Kit local tooling (artifacts in specs/ are tracked)
+.claude/
+.specify/
+conductor/
