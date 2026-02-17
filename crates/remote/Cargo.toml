@@ -41,7 +41,7 @@ ts-rs = { git = "https://github.com/xazukx/ts-rs.git", branch = "use-ts-enum", f
 api-types = { path = "../api-types" }
 utils = { path = "../utils" }
 uuid = { version = "1", features = ["serde", "v4"] }
-jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 rand = "0.9"
 sha2 = "0.10"
 hmac = "0.12"
